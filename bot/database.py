@@ -31,6 +31,7 @@ class FunPayLink:
     funpay_id: str
     kinguin_id: int
     user_id: int
+    price: float  # Price at the time of linking
     created_at: str
 
 
@@ -77,6 +78,7 @@ class Database:
                     funpay_id TEXT PRIMARY KEY,
                     kinguin_id INTEGER NOT NULL,
                     user_id INTEGER NOT NULL,
+                    price REAL NOT NULL DEFAULT 0.0,
                     created_at TEXT NOT NULL
                 )
             """)
@@ -84,6 +86,13 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_funpay_user_id
                 ON funpay_links(user_id)
             """)
+
+            # Migration: add price column if it doesn't exist
+            try:
+                conn.execute("ALTER TABLE funpay_links ADD COLUMN price REAL NOT NULL DEFAULT 0.0")
+            except sqlite3.OperationalError:
+                # Column already exists
+                pass
 
             conn.commit()
 
@@ -179,14 +188,14 @@ class Database:
             return [Purchase(**dict(row)) for row in cursor.fetchall()]
 
     # FunPay links methods
-    def add_funpay_link(self, funpay_id: str, kinguin_id: int, user_id: int):
+    def add_funpay_link(self, funpay_id: str, kinguin_id: int, user_id: int, price: float):
         """Add or update FunPay to Kinguin link."""
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO funpay_links (
-                    funpay_id, kinguin_id, user_id, created_at
-                ) VALUES (?, ?, ?, ?)
-            """, (funpay_id, kinguin_id, user_id, datetime.now().isoformat()))
+                    funpay_id, kinguin_id, user_id, price, created_at
+                ) VALUES (?, ?, ?, ?, ?)
+            """, (funpay_id, kinguin_id, user_id, price, datetime.now().isoformat()))
             conn.commit()
 
     def remove_funpay_link(self, funpay_id: str, user_id: int) -> bool:
