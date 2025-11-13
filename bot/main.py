@@ -2,7 +2,6 @@
 
 import logging
 import asyncio
-import os
 from telegram.ext import Application
 
 from config import Config
@@ -16,11 +15,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-async def check_pending_orders(
-    bot: KinguinBot,
-    application: Application
-):
+async def check_pending_orders(bot: KinguinBot, app):
     """Background task to check pending orders and send keys when ready."""
+    await asyncio.sleep(10)  # Wait for bot to start
+
     while True:
         try:
             pending = bot.db.get_pending_purchases()
@@ -60,7 +58,7 @@ async def check_pending_orders(
                                 for i, key in enumerate(keys, 1):
                                     keys_text += f"{i}. `{key.serial}`\n"
 
-                                await application.bot.send_message(
+                                await app.bot.send_message(
                                     chat_id=purchase.user_id,
                                     text=keys_text,
                                     parse_mode="Markdown"
@@ -89,52 +87,56 @@ async def check_pending_orders(
         await asyncio.sleep(60)
 
 
-async def post_init(application: Application):
-    """Post initialization hook."""
+async def run_bot():
+    """Run the bot."""
+    # Load configuration
+    config = Config.from_env()
+    logger.info("Configuration loaded")
+
+    # Initialize bot
+    bot = KinguinBot(config)
+    logger.info("Bot initialized")
+
+    # Build application
+    application = bot.build_application()
+
+    # Initialize the application
+    await application.initialize()
+    await application.start()
+
     logger.info("Bot started successfully")
 
-    # Start background task for checking orders
-    bot = application.bot_data.get("kinguin_bot")
-    if bot:
-        asyncio.create_task(check_pending_orders(bot, application))
+    # Start background task
+    background_task = asyncio.create_task(check_pending_orders(bot, application))
 
+    # Start polling
+    await application.updater.start_polling(
+        allowed_updates=["message", "callback_query"],
+        drop_pending_updates=True
+    )
 
-async def post_shutdown(application: Application):
-    """Post shutdown hook."""
-    logger.info("Bot stopped")
+    logger.info("Polling started")
+
+    # Keep running
+    try:
+        while True:
+            await asyncio.sleep(1)
+    except (KeyboardInterrupt, SystemExit):
+        logger.info("Stopping bot...")
+        background_task.cancel()
+        await application.updater.stop()
+        await application.stop()
+        await application.shutdown()
 
 
 def main():
-    """Run the bot."""
+    """Main entry point."""
     try:
-        # Load configuration
-        config = Config.from_env()
-        logger.info("Configuration loaded")
-
-        # Initialize bot
-        bot = KinguinBot(config)
-        logger.info("Bot initialized")
-
-        # Build application
-        application = bot.build_application()
-
-        # Store bot instance for background tasks
-        application.bot_data["kinguin_bot"] = bot
-
-        # Add lifecycle hooks
-        application.post_init = post_init
-        application.post_shutdown = post_shutdown
-
-        logger.info("Starting bot with polling...")
-
-        # Run bot with polling (no webhooks)
-        application.run_polling(
-            allowed_updates=["message", "callback_query"],
-            drop_pending_updates=True
-        )
-
+        asyncio.run(run_bot())
+    except KeyboardInterrupt:
+        logger.info("Bot stopped by user")
     except Exception as e:
-        logger.error(f"Failed to start bot: {e}")
+        logger.error(f"Failed to start bot: {e}", exc_info=True)
         raise
 
 
