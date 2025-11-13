@@ -13,9 +13,9 @@ from telegram.ext import (
     filters
 )
 
-from config import Config
-from kinguin_client import KinguinClient, KinguinAPIError, Product
-from database import Database, Purchase
+from bot.config import Config
+from bot.kinguin_client import KinguinClient, KinguinAPIError, Product
+from bot.database import Database, Purchase
 
 logger = logging.getLogger(__name__)
 
