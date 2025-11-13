@@ -23,9 +23,8 @@ class Config:
 
     @property
     def kinguin_base_url(self) -> str:
-        """Get Kinguin API base URL based on environment."""
-        if self.kinguin_environment == "production":
-            return "https://gateway.kinguin.net/esa/api/v2"
+        """Get Kinguin API base URL."""
+        # Always use v1 for buyer/integration API
         return "https://gateway.kinguin.net/esa/api/v1"
 
     # Database
