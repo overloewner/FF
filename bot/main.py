@@ -93,6 +93,11 @@ async def post_init(application: Application):
     """Post initialization hook."""
     logger.info("Bot started successfully")
 
+    # Start background task for checking orders
+    bot = application.bot_data.get("kinguin_bot")
+    if bot:
+        asyncio.create_task(check_pending_orders(bot, application))
+
 
 async def post_shutdown(application: Application):
     """Post shutdown hook."""
@@ -113,18 +118,12 @@ def main():
         # Build application
         application = bot.build_application()
 
+        # Store bot instance for background tasks
+        application.bot_data["kinguin_bot"] = bot
+
         # Add lifecycle hooks
         application.post_init = post_init
         application.post_shutdown = post_shutdown
-
-        # Start background task for checking orders
-        application.job_queue.run_repeating(
-            lambda context: asyncio.create_task(
-                check_pending_orders(bot, application)
-            ),
-            interval=60,
-            first=10
-        )
 
         logger.info("Starting bot with polling...")
 
