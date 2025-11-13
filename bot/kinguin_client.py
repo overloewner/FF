@@ -140,7 +140,7 @@ class KinguinClient:
         if kinguin_id:
             params["kinguinId"] = kinguin_id
 
-        response = self._request("GET", "/products", params=params)
+        response = self._request("GET", "/products/search", params=params)
 
         products = []
         for item in response.get("results", []):
