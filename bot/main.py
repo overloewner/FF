@@ -5,8 +5,8 @@ import asyncio
 import os
 from telegram.ext import Application
 
-from bot.config import Config
-from bot.telegram_bot import KinguinBot
+from config import Config
+from telegram_bot import KinguinBot
 
 # Configure logging
 logging.basicConfig(
