@@ -143,13 +143,17 @@ class KinguinClient:
 
     def get_product(self, kinguin_id: int) -> Product:
         """Get product details by Kinguin ID."""
-        # In API v2, we search by kinguinId instead of direct GET
-        products = self.search_products(kinguin_id=kinguin_id, limit=1)
+        response = self._request("GET", f"/products/{kinguin_id}")
 
-        if not products:
-            raise KinguinAPIError(f"Product with ID {kinguin_id} not found")
-
-        return products[0]
+        return Product(
+            kinguin_id=response["kinguinId"],
+            name=response["name"],
+            price=response["price"],
+            qty=response["qty"],
+            platform=response.get("platform", "N/A"),
+            region=response.get("region", "N/A"),
+            offer_id=response.get("offerId")
+        )
 
     def create_order(
         self,

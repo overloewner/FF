@@ -19,7 +19,14 @@ class Config:
     # Kinguin API
     kinguin_api_key: str
     kinguin_api_secret: Optional[str]
-    kinguin_base_url: str = "https://gateway.kinguin.net/esa/api/v2"
+    kinguin_environment: str = "sandbox"  # sandbox or production
+
+    @property
+    def kinguin_base_url(self) -> str:
+        """Get Kinguin API base URL based on environment."""
+        if self.kinguin_environment == "production":
+            return "https://gateway.kinguin.net/esa/api/v2"
+        return "https://gateway.kinguin.net/esa/api/v1"
 
     # Database
     database_path: str = "data/purchases.db"
@@ -47,6 +54,7 @@ class Config:
             telegram_allowed_users=allowed_users,
             kinguin_api_key=kinguin_api_key,
             kinguin_api_secret=os.getenv("KINGUIN_API_SECRET"),
+            kinguin_environment=os.getenv("KINGUIN_ENV", "sandbox"),
             database_path=os.getenv("DATABASE_PATH", "data/purchases.db"),
         )
 
