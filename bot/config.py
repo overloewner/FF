@@ -19,7 +19,7 @@ class Config:
     # Kinguin API
     kinguin_api_key: str
     kinguin_api_secret: Optional[str]
-    kinguin_environment: str = "sandbox"  # sandbox or production
+    kinguin_environment: str = "production"  # sandbox or production
 
     @property
     def kinguin_base_url(self) -> str:
@@ -54,7 +54,7 @@ class Config:
             telegram_allowed_users=allowed_users,
             kinguin_api_key=kinguin_api_key,
             kinguin_api_secret=os.getenv("KINGUIN_API_SECRET"),
-            kinguin_environment=os.getenv("KINGUIN_ENV", "sandbox"),
+            kinguin_environment=os.getenv("KINGUIN_ENV", "production"),
             database_path=os.getenv("DATABASE_PATH", "data/purchases.db"),
         )
 
