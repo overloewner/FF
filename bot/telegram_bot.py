@@ -143,11 +143,18 @@ class KinguinBot:
 
         # Get product info
         try:
+            await update.message.reply_text("🔍 Поиск товара...")
             product = self.kinguin.get_product(kinguin_id)
 
             if product.qty < quantity:
                 await update.message.reply_text(
                     f"❌ Недостаточно товара на складе. Доступно: {product.qty}"
+                )
+                return
+
+            if product.qty == 0:
+                await update.message.reply_text(
+                    "❌ Товар отсутствует на складе"
                 )
                 return
 
