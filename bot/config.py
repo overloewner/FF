@@ -19,7 +19,7 @@ class Config:
     # Kinguin API
     kinguin_api_key: str
     kinguin_api_secret: Optional[str]
-    kinguin_base_url: str = "https://gateway.kinguin.net/esa/api/v2"
+    kinguin_base_url: str = "https://gateway.kinguin.net/esa/api/v1"
 
     # Database
     database_path: str = "data/purchases.db"
