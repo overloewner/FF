@@ -54,9 +54,11 @@ class KinguinBot:
         welcome_message = (
             "🎮 *Kinguin Purchase Bot*\n\n"
             "Доступные команды:\n"
+            "/balance - Проверить баланс\n"
             "/search `<название>` - Найти товар\n"
             "/buy `<kinguin_id>` `<quantity>` - Купить товар\n"
             "/history - История покупок\n"
+            "/order `<order_id>` - Детали заказа\n"
             "/help - Справка"
         )
         await update.message.reply_text(
@@ -75,12 +77,16 @@ class KinguinBot:
 
         help_text = (
             "📖 *Справка*\n\n"
+            "*Баланс:*\n"
+            "`/balance` - проверить баланс аккаунта\n\n"
             "*Поиск товара:*\n"
             "`/search Steam` - найти товары по названию\n\n"
             "*Покупка товара:*\n"
             "`/buy 123456 1` - купить 1 шт товара с ID 123456\n\n"
             "*История:*\n"
             "`/history` - показать последние 10 покупок\n\n"
+            "*Детали заказа:*\n"
+            "`/order G94DBBFFB63F` - посмотреть заказ с ключами\n\n"
             "После команды /buy вы получите карточку товара "
             "с кнопкой подтверждения."
         )
@@ -281,7 +287,85 @@ class KinguinBot:
                 f"   🆔 `{purchase.order_id}`\n\n"
             )
 
+        history_text += "\n💡 Для просмотра деталей: `/order <order_id>`"
+
         await update.message.reply_text(history_text, parse_mode="Markdown")
+
+    async def order_command(
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE
+    ):
+        """Handle /order command - view order details by ID."""
+        if not self._check_authorization(update):
+            return
+
+        if not context.args:
+            await update.message.reply_text(
+                "❌ Использование: `/order <order_id>`\n\n"
+                "Пример: `/order G94DBBFFB63F`",
+                parse_mode="Markdown"
+            )
+            return
+
+        order_id = context.args[0].strip()
+
+        try:
+            # Get order from API
+            await update.message.reply_text(f"🔍 Загружаю данные заказа {order_id}...")
+            order = self.kinguin.get_order(order_id)
+
+            # Try to get keys
+            keys_text = ""
+            try:
+                keys = self.kinguin.get_order_keys(order_id)
+                if keys:
+                    keys_text = "\n\n🔑 *Ключи:*\n"
+                    for i, key in enumerate(keys, 1):
+                        keys_text += f"{i}. `{key.serial}`\n"
+                        if key.name != "N/A":
+                            keys_text += f"   📝 {key.name}\n"
+            except Exception as e:
+                logger.warning(f"Could not fetch keys for order {order_id}: {e}")
+                if order.get("status") == "completed":
+                    keys_text = "\n\n⚠️ Не удалось получить ключи"
+
+            # Format order details
+            status = order.get("status", "unknown")
+            status_emoji = {
+                "completed": "✅",
+                "processing": "⏳",
+                "new": "🆕",
+                "cancelled": "❌",
+                "refunded": "↩️"
+            }.get(status, "❓")
+
+            order_text = (
+                f"📦 *Детали заказа*\n\n"
+                f"🆔 ID: `{order_id}`\n"
+                f"📊 Статус: {status_emoji} {status}\n"
+                f"💰 Сумма: €{order.get('totalPrice', 0):.2f}\n"
+            )
+
+            # Add products info
+            products = order.get("products", [])
+            if products:
+                order_text += f"\n🎮 *Товары ({len(products)}):*\n"
+                for product in products:
+                    order_text += (
+                        f"• {product.get('name', 'N/A')}\n"
+                        f"  📦 {product.get('qty', 0)} шт × €{product.get('price', 0):.2f}\n"
+                    )
+
+            order_text += keys_text
+
+            await update.message.reply_text(order_text, parse_mode="Markdown")
+
+        except KinguinAPIError as e:
+            logger.error(f"Failed to get order {order_id}: {e}")
+            await update.message.reply_text(
+                f"❌ Ошибка при получении заказа: {str(e)}"
+            )
 
     async def button_callback(
         self,
@@ -402,9 +486,11 @@ class KinguinBot:
         # Add handlers
         application.add_handler(CommandHandler("start", self.start_command))
         application.add_handler(CommandHandler("help", self.help_command))
+        application.add_handler(CommandHandler("balance", self.balance_command))
         application.add_handler(CommandHandler("search", self.search_command))
         application.add_handler(CommandHandler("buy", self.buy_command))
         application.add_handler(CommandHandler("history", self.history_command))
+        application.add_handler(CommandHandler("order", self.order_command))
         application.add_handler(CallbackQueryHandler(self.button_callback))
 
         # Error handler
