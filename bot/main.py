@@ -1,0 +1,144 @@
+"""Main entry point for Kinguin Telegram Bot."""
+
+import logging
+import asyncio
+from telegram.ext import Application
+
+from config import Config
+from telegram_bot import KinguinBot
+from database import Database
+from kinguin_client import KinguinClient
+
+# Configure logging
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+
+async def check_pending_orders(
+    bot: KinguinBot,
+    application: Application
+):
+    """Background task to check pending orders and send keys when ready."""
+    while True:
+        try:
+            pending = bot.db.get_pending_purchases()
+
+            for purchase in pending:
+                try:
+                    # Check order status
+                    order = bot.kinguin.get_order(purchase.order_id)
+                    new_status = order["status"]
+
+                    # Update status if changed
+                    if new_status != purchase.status:
+                        if new_status == "completed":
+                            # Get keys
+                            keys = bot.kinguin.get_order_keys(purchase.order_id)
+
+                            if keys:
+                                import json
+                                keys_json = json.dumps([
+                                    {"serial": k.serial, "name": k.name, "type": k.type}
+                                    for k in keys
+                                ])
+                                bot.db.update_purchase_status(
+                                    purchase.order_id,
+                                    new_status,
+                                    keys_json
+                                )
+
+                                # Send keys to user
+                                keys_text = (
+                                    f"✅ *Заказ завершен!*\n\n"
+                                    f"🆔 ID: `{purchase.order_id}`\n"
+                                    f"🎮 {purchase.product_name}\n\n"
+                                    f"🔑 *Ключи:*\n"
+                                )
+
+                                for i, key in enumerate(keys, 1):
+                                    keys_text += f"{i}. `{key.serial}`\n"
+
+                                await application.bot.send_message(
+                                    chat_id=purchase.user_id,
+                                    text=keys_text,
+                                    parse_mode="Markdown"
+                                )
+
+                                logger.info(
+                                    f"Sent keys for order {purchase.order_id} "
+                                    f"to user {purchase.user_id}"
+                                )
+                        else:
+                            # Update status without keys
+                            bot.db.update_purchase_status(
+                                purchase.order_id,
+                                new_status
+                            )
+
+                except Exception as e:
+                    logger.error(
+                        f"Failed to check order {purchase.order_id}: {e}"
+                    )
+
+        except Exception as e:
+            logger.error(f"Error in background task: {e}")
+
+        # Check every 60 seconds
+        await asyncio.sleep(60)
+
+
+async def post_init(application: Application):
+    """Post initialization hook."""
+    logger.info("Bot started successfully")
+
+
+async def post_shutdown(application: Application):
+    """Post shutdown hook."""
+    logger.info("Bot stopped")
+
+
+def main():
+    """Run the bot."""
+    try:
+        # Load configuration
+        config = Config.from_env()
+        logger.info("Configuration loaded")
+
+        # Initialize bot
+        bot = KinguinBot(config)
+        logger.info("Bot initialized")
+
+        # Build application
+        application = bot.build_application()
+
+        # Add lifecycle hooks
+        application.post_init = post_init
+        application.post_shutdown = post_shutdown
+
+        # Start background task for checking orders
+        application.job_queue.run_repeating(
+            lambda context: asyncio.create_task(
+                check_pending_orders(bot, application)
+            ),
+            interval=60,
+            first=10
+        )
+
+        logger.info("Starting bot with polling...")
+
+        # Run bot with polling (no webhooks)
+        application.run_polling(
+            allowed_updates=["message", "callback_query"],
+            drop_pending_updates=True
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to start bot: {e}")
+        raise
+
+
+if __name__ == "__main__":
+    main()
