@@ -184,6 +184,19 @@ class KinguinClient:
         """Get keys from completed order.
 
         Note: Keys endpoint uses v2 API while purchases use v1.
+
+        Response format example:
+        [
+            {
+                "id": "6915f2caa0857e15184c342c",
+                "serial": "XXXXX-XXXXX-XXXXX",
+                "type": "text/plain",
+                "name": "Product Name",
+                "kinguinId": 131286,
+                "productId": "632abcd50eda6de0a0b581c8",
+                "offerId": "647875dff0cf2a00015f814a"
+            }
+        ]
         """
         # Save original base URL
         original_base_url = self.base_url
@@ -194,8 +207,11 @@ class KinguinClient:
         try:
             response = self._request("GET", f"/order/{order_id}/keys")
 
+            # Response is directly an array of key objects
             keys = []
-            for item in response.get("keys", []):
+            items = response if isinstance(response, list) else response.get("keys", [])
+
+            for item in items:
                 keys.append(OrderKey(
                     serial=item.get("serial", "N/A"),
                     name=item.get("name", "N/A"),
