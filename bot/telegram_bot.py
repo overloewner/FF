@@ -56,7 +56,6 @@ class KinguinBot:
             "Доступные команды:\n"
             "/search `<название>` - Найти товар\n"
             "/buy `<kinguin_id>` `<quantity>` - Купить товар\n"
-            "/balance - Проверить баланс\n"
             "/history - История покупок\n"
             "/help - Справка"
         )
@@ -80,8 +79,6 @@ class KinguinBot:
             "`/search Steam` - найти товары по названию\n\n"
             "*Покупка товара:*\n"
             "`/buy 123456 1` - купить 1 шт товара с ID 123456\n\n"
-            "*Проверка баланса:*\n"
-            "`/balance` - показать текущий баланс\n\n"
             "*История:*\n"
             "`/history` - показать последние 10 покупок\n\n"
             "После команды /buy вы получите карточку товара "
@@ -406,7 +403,6 @@ class KinguinBot:
         application.add_handler(CommandHandler("start", self.start_command))
         application.add_handler(CommandHandler("help", self.help_command))
         application.add_handler(CommandHandler("search", self.search_command))
-        application.add_handler(CommandHandler("balance", self.balance_command))
         application.add_handler(CommandHandler("buy", self.buy_command))
         application.add_handler(CommandHandler("history", self.history_command))
         application.add_handler(CallbackQueryHandler(self.button_callback))
