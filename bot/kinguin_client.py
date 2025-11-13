@@ -181,18 +181,31 @@ class KinguinClient:
         return self._request("GET", f"/order/{order_id}")
 
     def get_order_keys(self, order_id: str) -> List[OrderKey]:
-        """Get keys from completed order."""
-        response = self._request("GET", f"/order/{order_id}/keys")
+        """Get keys from completed order.
 
-        keys = []
-        for item in response.get("keys", []):
-            keys.append(OrderKey(
-                serial=item.get("serial", "N/A"),
-                name=item.get("name", "N/A"),
-                type=item.get("type", "N/A")
-            ))
+        Note: Keys endpoint uses v2 API while purchases use v1.
+        """
+        # Save original base URL
+        original_base_url = self.base_url
 
-        return keys
+        # Temporarily switch to v2 for keys endpoint
+        self.base_url = "https://gateway.kinguin.net/esa/api/v2"
+
+        try:
+            response = self._request("GET", f"/order/{order_id}/keys")
+
+            keys = []
+            for item in response.get("keys", []):
+                keys.append(OrderKey(
+                    serial=item.get("serial", "N/A"),
+                    name=item.get("name", "N/A"),
+                    type=item.get("type", "N/A")
+                ))
+
+            return keys
+        finally:
+            # Restore original base URL
+            self.base_url = original_base_url
 
     def get_orders(self, limit: int = 10) -> List[Dict[str, Any]]:
         """Get list of orders."""
