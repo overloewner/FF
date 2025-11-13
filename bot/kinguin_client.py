@@ -80,20 +80,6 @@ class KinguinClient:
     ) -> Dict[str, Any]:
         """Make authenticated request to Kinguin API."""
         url = f"{self.base_url}{path}"
-        timestamp = str(int(time.time() * 1000))
-
-        headers = {}
-
-        # Add signature if API secret is provided
-        if self.api_secret:
-            body = ""
-            if data:
-                import json
-                body = json.dumps(data)
-
-            signature = self._generate_signature(path, method, body, timestamp)
-            headers["X-Api-Signature"] = signature
-            headers["X-Api-Timestamp"] = timestamp
 
         try:
             response = self.session.request(
@@ -101,7 +87,6 @@ class KinguinClient:
                 url=url,
                 json=data,
                 params=params,
-                headers=headers,
                 timeout=30
             )
             response.raise_for_status()
