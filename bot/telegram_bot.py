@@ -409,15 +409,15 @@ class KinguinBot:
             await update.message.reply_text(f"🔍 Проверяю товар Kinguin {kinguin_id}...")
             product = self.kinguin.get_product(kinguin_id)
 
-            # Save link
-            self.db.add_funpay_link(funpay_id, kinguin_id, user_id)
+            # Save link with current price
+            self.db.add_funpay_link(funpay_id, kinguin_id, user_id, product.price)
 
             await update.message.reply_text(
                 f"✅ *Связь создана!*\n\n"
                 f"🔗 FunPay ID: `{funpay_id}`\n"
                 f"🎮 Kinguin ID: `{kinguin_id}`\n"
                 f"📦 Товар: {product.name}\n"
-                f"💰 Цена: €{product.price:.2f}\n\n"
+                f"💰 Цена на момент связи: €{product.price:.2f}\n\n"
                 f"Теперь используйте `/funpay {funpay_id}` для быстрой покупки",
                 parse_mode="Markdown"
             )
@@ -487,6 +487,7 @@ class KinguinBot:
 
             links_text += (
                 f"{i}. FunPay: `{link.funpay_id}` → Kinguin: `{link.kinguin_id}`\n"
+                f"   💰 Цена при создании: €{link.price:.2f}\n"
                 f"   📅 {date_str}\n\n"
             )
 
@@ -525,6 +526,7 @@ class KinguinBot:
             return
 
         kinguin_id = link.kinguin_id
+        old_price = link.price
         quantity = 1  # Default quantity
 
         # Get product info
@@ -543,12 +545,21 @@ class KinguinBot:
 
             # Create product card with confirmation button
             total_price = product.price * quantity
+            current_price = product.price
+
+            # Price comparison
+            price_diff = current_price - old_price
+            price_emoji = "📈" if price_diff > 0 else "📉" if price_diff < 0 else "➡️"
+            price_text = f"💰 Цена сейчас: €{current_price:.2f}\n"
+
+            if price_diff != 0:
+                price_text += f"{price_emoji} Изменение: €{price_diff:+.2f} (было €{old_price:.2f})\n"
 
             card_text = (
                 f"🎮 *{product.name}*\n\n"
                 f"🔗 FunPay ID: `{funpay_id}`\n"
                 f"🆔 Kinguin ID: `{kinguin_id}`\n\n"
-                f"💰 Цена: €{product.price:.2f}\n"
+                f"{price_text}"
                 f"📦 Количество: {quantity}\n"
                 f"💵 Итого: €{total_price:.2f}\n\n"
                 f"🖥 Платформа: {product.platform}\n"
