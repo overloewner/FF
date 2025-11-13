@@ -15,7 +15,7 @@ from telegram.ext import (
 
 from config import Config
 from kinguin_client import KinguinClient, KinguinAPIError, Product
-from database import Database, Purchase
+from database import Database, Purchase, FunPayLink
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +58,12 @@ class KinguinBot:
             "/search `<название>` - Найти товар\n"
             "/buy `<kinguin_id>` `<quantity>` - Купить товар\n"
             "/history - История покупок\n"
-            "/order `<order_id>` - Детали заказа\n"
+            "/order `<order_id>` - Детали заказа\n\n"
+            "*FunPay интеграция:*\n"
+            "/link `<kinguin_id>` `<funpay_id>` - Связать товары\n"
+            "/funpay `<funpay_id>` - Быстрая покупка\n"
+            "/links - Список связей\n"
+            "/unlink `<funpay_id>` - Удалить связь\n\n"
             "/help - Справка"
         )
         await update.message.reply_text(
@@ -87,7 +92,12 @@ class KinguinBot:
             "`/history` - показать последние 10 покупок\n\n"
             "*Детали заказа:*\n"
             "`/order G94DBBFFB63F` - посмотреть заказ с ключами\n\n"
-            "После команды /buy вы получите карточку товара "
+            "*FunPay интеграция (для перепродажи):*\n"
+            "`/link 123456 32608058` - связать Kinguin и FunPay ID\n"
+            "`/funpay 32608058` - быстрая покупка по FunPay ID\n"
+            "`/links` - список всех связанных товаров\n"
+            "`/unlink 32608058` - удалить связь\n\n"
+            "После команды /buy или /funpay вы получите карточку товара "
             "с кнопкой подтверждения."
         )
         await update.message.reply_text(help_text, parse_mode="Markdown")
@@ -367,6 +377,203 @@ class KinguinBot:
                 f"❌ Ошибка при получении заказа: {str(e)}"
             )
 
+    async def link_command(
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE
+    ):
+        """Handle /link command - link FunPay ID to Kinguin ID."""
+        if not self._check_authorization(update):
+            return
+
+        if len(context.args) < 2:
+            await update.message.reply_text(
+                "❌ Использование: `/link <kinguin_id> <funpay_id>`\n\n"
+                "Пример: `/link 123456 32608058`\n"
+                "Это привяжет FunPay ID 32608058 к Kinguin ID 123456",
+                parse_mode="Markdown"
+            )
+            return
+
+        try:
+            kinguin_id = int(context.args[0])
+            funpay_id = context.args[1].strip()
+        except ValueError:
+            await update.message.reply_text("❌ Kinguin ID должен быть числом")
+            return
+
+        user_id = update.effective_user.id
+
+        # Verify Kinguin product exists
+        try:
+            await update.message.reply_text(f"🔍 Проверяю товар Kinguin {kinguin_id}...")
+            product = self.kinguin.get_product(kinguin_id)
+
+            # Save link
+            self.db.add_funpay_link(funpay_id, kinguin_id, user_id)
+
+            await update.message.reply_text(
+                f"✅ *Связь создана!*\n\n"
+                f"🔗 FunPay ID: `{funpay_id}`\n"
+                f"🎮 Kinguin ID: `{kinguin_id}`\n"
+                f"📦 Товар: {product.name}\n"
+                f"💰 Цена: €{product.price:.2f}\n\n"
+                f"Теперь используйте `/funpay {funpay_id}` для быстрой покупки",
+                parse_mode="Markdown"
+            )
+
+        except KinguinAPIError as e:
+            logger.error(f"Failed to verify product {kinguin_id}: {e}")
+            await update.message.reply_text(
+                f"❌ Ошибка: товар Kinguin {kinguin_id} не найден"
+            )
+
+    async def unlink_command(
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE
+    ):
+        """Handle /unlink command - remove FunPay link."""
+        if not self._check_authorization(update):
+            return
+
+        if not context.args:
+            await update.message.reply_text(
+                "❌ Использование: `/unlink <funpay_id>`\n\n"
+                "Пример: `/unlink 32608058`",
+                parse_mode="Markdown"
+            )
+            return
+
+        funpay_id = context.args[0].strip()
+        user_id = update.effective_user.id
+
+        if self.db.remove_funpay_link(funpay_id, user_id):
+            await update.message.reply_text(
+                f"✅ Связь для FunPay ID `{funpay_id}` удалена",
+                parse_mode="Markdown"
+            )
+        else:
+            await update.message.reply_text(
+                f"❌ Связь для FunPay ID `{funpay_id}` не найдена",
+                parse_mode="Markdown"
+            )
+
+    async def links_command(
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE
+    ):
+        """Handle /links command - show all FunPay links."""
+        if not self._check_authorization(update):
+            return
+
+        user_id = update.effective_user.id
+        links = self.db.get_all_funpay_links(user_id)
+
+        if not links:
+            await update.message.reply_text(
+                "📋 Список связей пуст\n\n"
+                "Используйте `/link <kinguin_id> <funpay_id>` для создания связи",
+                parse_mode="Markdown"
+            )
+            return
+
+        links_text = "🔗 *Связи FunPay → Kinguin:*\n\n"
+
+        for i, link in enumerate(links, 1):
+            created = datetime.fromisoformat(link.created_at)
+            date_str = created.strftime("%d.%m.%Y")
+
+            links_text += (
+                f"{i}. FunPay: `{link.funpay_id}` → Kinguin: `{link.kinguin_id}`\n"
+                f"   📅 {date_str}\n\n"
+            )
+
+        links_text += "\n💡 Используйте `/funpay <funpay_id>` для покупки"
+
+        await update.message.reply_text(links_text, parse_mode="Markdown")
+
+    async def funpay_command(
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE
+    ):
+        """Handle /funpay command - quick buy by FunPay ID."""
+        if not self._check_authorization(update):
+            return
+
+        if not context.args:
+            await update.message.reply_text(
+                "❌ Использование: `/funpay <funpay_id>`\n\n"
+                "Пример: `/funpay 32608058`",
+                parse_mode="Markdown"
+            )
+            return
+
+        funpay_id = context.args[0].strip()
+        user_id = update.effective_user.id
+
+        # Get link
+        link = self.db.get_funpay_link(funpay_id, user_id)
+        if not link:
+            await update.message.reply_text(
+                f"❌ Связь для FunPay ID `{funpay_id}` не найдена\n\n"
+                f"Используйте `/link <kinguin_id> <funpay_id>` для создания связи",
+                parse_mode="Markdown"
+            )
+            return
+
+        kinguin_id = link.kinguin_id
+        quantity = 1  # Default quantity
+
+        # Get product info
+        try:
+            await update.message.reply_text("🔍 Загружаю информацию о товаре...")
+            product = self.kinguin.get_product(kinguin_id)
+
+            if product.qty == 0:
+                await update.message.reply_text(
+                    "❌ Товар отсутствует на складе"
+                )
+                return
+
+            # Store pending purchase
+            self.pending_purchases[user_id] = (product, quantity)
+
+            # Create product card with confirmation button
+            total_price = product.price * quantity
+
+            card_text = (
+                f"🎮 *{product.name}*\n\n"
+                f"🔗 FunPay ID: `{funpay_id}`\n"
+                f"🆔 Kinguin ID: `{kinguin_id}`\n\n"
+                f"💰 Цена: €{product.price:.2f}\n"
+                f"📦 Количество: {quantity}\n"
+                f"💵 Итого: €{total_price:.2f}\n\n"
+                f"🖥 Платформа: {product.platform}\n"
+                f"🌍 Регион: {product.region}\n"
+                f"📊 Доступно: {product.qty} шт."
+            )
+
+            keyboard = [
+                [InlineKeyboardButton("✅ Подтвердить покупку", callback_data="confirm_purchase")],
+                [InlineKeyboardButton("❌ Отменить", callback_data="cancel_purchase")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            await update.message.reply_text(
+                card_text,
+                reply_markup=reply_markup,
+                parse_mode="Markdown"
+            )
+
+        except KinguinAPIError as e:
+            logger.error(f"Failed to get product {kinguin_id}: {e}")
+            await update.message.reply_text(
+                f"❌ Ошибка при получении информации о товаре: {str(e)}"
+            )
+
     async def button_callback(
         self,
         update: Update,
@@ -491,6 +698,13 @@ class KinguinBot:
         application.add_handler(CommandHandler("buy", self.buy_command))
         application.add_handler(CommandHandler("history", self.history_command))
         application.add_handler(CommandHandler("order", self.order_command))
+
+        # FunPay integration
+        application.add_handler(CommandHandler("link", self.link_command))
+        application.add_handler(CommandHandler("unlink", self.unlink_command))
+        application.add_handler(CommandHandler("links", self.links_command))
+        application.add_handler(CommandHandler("funpay", self.funpay_command))
+
         application.add_handler(CallbackQueryHandler(self.button_callback))
 
         # Error handler

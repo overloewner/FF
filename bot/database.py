@@ -25,6 +25,15 @@ class Purchase:
     completed_at: Optional[str] = None
 
 
+@dataclass
+class FunPayLink:
+    """FunPay to Kinguin ID link."""
+    funpay_id: str
+    kinguin_id: int
+    user_id: int
+    created_at: str
+
+
 class Database:
     """Database manager for purchase history."""
 
@@ -61,6 +70,21 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_order_id
                 ON purchases(order_id)
             """)
+
+            # FunPay links table
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS funpay_links (
+                    funpay_id TEXT PRIMARY KEY,
+                    kinguin_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_funpay_user_id
+                ON funpay_links(user_id)
+            """)
+
             conn.commit()
 
     def add_purchase(self, purchase: Purchase) -> int:
@@ -153,3 +177,50 @@ class Database:
             """)
 
             return [Purchase(**dict(row)) for row in cursor.fetchall()]
+
+    # FunPay links methods
+    def add_funpay_link(self, funpay_id: str, kinguin_id: int, user_id: int):
+        """Add or update FunPay to Kinguin link."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("""
+                INSERT OR REPLACE INTO funpay_links (
+                    funpay_id, kinguin_id, user_id, created_at
+                ) VALUES (?, ?, ?, ?)
+            """, (funpay_id, kinguin_id, user_id, datetime.now().isoformat()))
+            conn.commit()
+
+    def remove_funpay_link(self, funpay_id: str, user_id: int) -> bool:
+        """Remove FunPay link. Returns True if deleted."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute("""
+                DELETE FROM funpay_links
+                WHERE funpay_id = ? AND user_id = ?
+            """, (funpay_id, user_id))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def get_funpay_link(self, funpay_id: str, user_id: int) -> Optional[FunPayLink]:
+        """Get FunPay link by ID."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute("""
+                SELECT * FROM funpay_links
+                WHERE funpay_id = ? AND user_id = ?
+            """, (funpay_id, user_id))
+            row = cursor.fetchone()
+
+            if row:
+                return FunPayLink(**dict(row))
+            return None
+
+    def get_all_funpay_links(self, user_id: int) -> List[FunPayLink]:
+        """Get all FunPay links for user."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute("""
+                SELECT * FROM funpay_links
+                WHERE user_id = ?
+                ORDER BY created_at DESC
+            """, (user_id,))
+
+            return [FunPayLink(**dict(row)) for row in cursor.fetchall()]
