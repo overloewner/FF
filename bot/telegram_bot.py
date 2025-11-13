@@ -54,6 +54,7 @@ class KinguinBot:
         welcome_message = (
             "🎮 *Kinguin Purchase Bot*\n\n"
             "Доступные команды:\n"
+            "/search `<название>` - Найти товар\n"
             "/buy `<kinguin_id>` `<quantity>` - Купить товар\n"
             "/balance - Проверить баланс\n"
             "/history - История покупок\n"
@@ -75,6 +76,8 @@ class KinguinBot:
 
         help_text = (
             "📖 *Справка*\n\n"
+            "*Поиск товара:*\n"
+            "`/search Steam` - найти товары по названию\n\n"
             "*Покупка товара:*\n"
             "`/buy 123456 1` - купить 1 шт товара с ID 123456\n\n"
             "*Проверка баланса:*\n"
@@ -85,6 +88,56 @@ class KinguinBot:
             "с кнопкой подтверждения."
         )
         await update.message.reply_text(help_text, parse_mode="Markdown")
+
+    async def search_command(
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE
+    ):
+        """Handle /search command."""
+        if not self._check_authorization(update):
+            return
+
+        if not context.args:
+            await update.message.reply_text(
+                "❌ Использование: `/search <название>`",
+                parse_mode="Markdown"
+            )
+            return
+
+        query = " ".join(context.args)
+
+        try:
+            await update.message.reply_text(f"🔍 Ищу: {query}...")
+            products = self.kinguin.search_products(name=query, limit=10)
+
+            if not products:
+                await update.message.reply_text(
+                    f"❌ Товары не найдены по запросу: {query}"
+                )
+                return
+
+            result_text = f"🎮 *Найдено товаров:* {len(products)}\n\n"
+
+            for i, product in enumerate(products, 1):
+                result_text += (
+                    f"{i}. *{product.name}*\n"
+                    f"   🆔 ID: `{product.kinguin_id}`\n"
+                    f"   💰 Цена: €{product.price:.2f}\n"
+                    f"   📦 Доступно: {product.qty} шт\n"
+                    f"   🖥 Платформа: {product.platform}\n"
+                    f"   🌍 Регион: {product.region}\n\n"
+                )
+
+            result_text += "\nДля покупки используйте:\n`/buy <ID> <количество>`"
+
+            await update.message.reply_text(result_text, parse_mode="Markdown")
+
+        except KinguinAPIError as e:
+            logger.error(f"Failed to search products: {e}")
+            await update.message.reply_text(
+                f"❌ Ошибка поиска: {str(e)}"
+            )
 
     async def balance_command(
         self,
@@ -352,6 +405,7 @@ class KinguinBot:
         # Add handlers
         application.add_handler(CommandHandler("start", self.start_command))
         application.add_handler(CommandHandler("help", self.help_command))
+        application.add_handler(CommandHandler("search", self.search_command))
         application.add_handler(CommandHandler("balance", self.balance_command))
         application.add_handler(CommandHandler("buy", self.buy_command))
         application.add_handler(CommandHandler("history", self.history_command))
